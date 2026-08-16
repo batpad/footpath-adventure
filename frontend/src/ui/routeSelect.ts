@@ -8,7 +8,7 @@ import type { LevelSpec, Mode } from '../level/types';
 import { ApiError, createLevel, fetchArea } from '../net/api';
 import { openReportForm } from './reportForm';
 
-const MAP_STYLE: maplibregl.MapOptions['style'] = {
+export const MAP_STYLE: maplibregl.MapOptions['style'] = {
   version: 8,
   sources: {
     osm: {

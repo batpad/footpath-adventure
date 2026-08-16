@@ -61,6 +61,7 @@ export interface RunStats {
   mode: LevelSpec['mode'];
   routeName: string;
   levelToken: string;
+  minimap: LevelSpec['minimap'];
 }
 
 const PED_HIT: Record<PedKind, { damage: number; stunMs: number; toast: string }> = {
@@ -976,6 +977,7 @@ export class GameScene extends Phaser.Scene {
       mode: this.spec.mode,
       routeName: `${this.spec.minimap.origin_name} → ${this.spec.minimap.dest_name}`,
       levelToken: this.spec.level_token,
+      minimap: this.spec.minimap,
     };
     this.time.delayedCall(outcome === 'finished' ? 400 : 700, () => {
       this.traffic.destroy();

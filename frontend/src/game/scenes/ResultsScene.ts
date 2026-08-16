@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
 import type { RunStats } from './GameScene';
 import { openReportForm } from '../../ui/reportForm';
+import { pickSpotOnRoute } from '../../ui/pickSpot';
 
 /** Blocked-footpath share → walkability letter grade for the real route. */
 function walkabilityGrade(blockedPct: number): string {
@@ -99,24 +100,23 @@ export class ResultsScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     reportBtn.on('pointerup', () => {
-      // Fully mute the game's keyboard while typing in the form — otherwise
+      // Fully mute the game's keyboard while the overlays are up — otherwise
       // Enter/Space in the note field would restart the game underneath.
       const kb = this.input.keyboard;
       if (kb) {
         kb.enabled = false;
         kb.disableGlobalCapture();
       }
-      void openReportForm({
-        levelToken: stats.levelToken,
-        distanceM: stats.distanceM,
-        lane: 'footpath',
-        placeHint: stats.routeName,
-      }).then(() => {
-        if (kb) {
-          kb.enabled = true;
-          kb.enableGlobalCapture();
-        }
-      });
+      // Show the walked route on a real map; the player clicks the exact
+      // spot, and the backend snaps the pin to the nearest street.
+      void pickSpotOnRoute(stats.minimap)
+        .then((lngLat) => (lngLat ? openReportForm({ lngLat }) : false))
+        .then(() => {
+          if (kb) {
+            kb.enabled = true;
+            kb.enableGlobalCapture();
+          }
+        });
     });
 
     const again = this.add
