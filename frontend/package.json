@@ -1,0 +1,21 @@
+{
+  "name": "footpath-adventure-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.4.0",
+    "phaser": "^3.85.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.11",
+    "vitest": "^1.6.0"
+  }
+}
