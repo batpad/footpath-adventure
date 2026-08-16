@@ -45,7 +45,16 @@ chmod 755 "$APP_HOME" # nginx must traverse into dist/ and media/
 # ── postgres ────────────────────────────────────────────────────
 say "Setting up PostgreSQL role + database (peer auth over local socket)"
 if ! sudo -u postgres psql -c "select 1" >/dev/null 2>&1; then
-  echo "!! PostgreSQL doesn't seem to be running — install/start it, then re-run." >&2
+  say "PostgreSQL not reachable — installing postgresql + postgis"
+  # The postgis package pulls in a matching postgresql-NN as a dependency.
+  apt-get install -y -qq postgresql postgis
+  systemctl enable --now postgresql
+  sleep 3
+fi
+if ! sudo -u postgres psql -c "select 1" >/dev/null 2>&1; then
+  echo "!! PostgreSQL is installed but not answering on the local socket." >&2
+  echo "   Check: systemctl status postgresql   and   sudo -u postgres psql" >&2
+  echo "   then re-run this script." >&2
   exit 1
 fi
 apt-get install -y -qq postgis 2>/dev/null || true # extension packages, best effort
