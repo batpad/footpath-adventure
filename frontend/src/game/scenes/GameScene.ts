@@ -16,6 +16,8 @@ import { CrossTrafficSystem, type CrossingBand } from '../crosstraffic';
 import { ProcessionSystem } from '../procession';
 import { buildPoiZones, inSchoolZone, type PoiZones } from '../poiZones';
 import { openReportForm } from '../../ui/reportForm';
+import { emojiTexture } from '../emojiAtlas';
+import { LabelPool, SpritePool } from '../pools';
 import { sfx } from '../sound';
 import {
   CAMERA_FOLLOW_OFFSET_Y,
@@ -107,6 +109,10 @@ export class GameScene extends Phaser.Scene {
   private poiZones!: PoiZones;
   private templeTimer = 0;
   private reportOpen = false;
+  private sprites!: SpritePool;
+  private badgeLabels!: LabelPool; // yellow chips: honks, chai
+  private floatLabels!: LabelPool; // green floaters: near-miss bonuses
+  private worldChunks: { container: Phaser.GameObjects.Container; topY: number; bottomY: number }[] = [];
   private timeLeftMs = 0;
   private lastTickSecond = -1;
   private nearMissStreak = 0;
@@ -135,8 +141,35 @@ export class GameScene extends Phaser.Scene {
     this.worldHeight = this.level.totalRows * TILE;
     this.resetRunState();
 
+    this.sprites = new SpritePool(this);
+    this.badgeLabels = new LabelPool(this, {
+      fontSize: '16px',
+      color: '#1a1a2e',
+      backgroundColor: '#f4d35e',
+      padding: { x: 6, y: 2 },
+    });
+    this.floatLabels = new LabelPool(this, {
+      fontSize: '18px',
+      color: '#8fd18f',
+      fontStyle: 'bold',
+    });
+
+    // Pre-rasterize every emoji the run can spawn, so no frame mid-game ever
+    // pays for a canvas rasterization.
+    const warm: [string, number][] = [
+      ['🚗', 44], ['🛺', 44], ['🚌', 44], ['🏍️', 44],
+      ['🚗', 40], ['🛺', 40], ['🏍️', 40], // cross-traffic size
+      ['🚶‍♀️', 40], ['🚶‍♂️', 40], ['👵', 40], ['🧍‍♂️', 40], ['🧕', 40], ['👨‍🦯', 40],
+      ['🧒', 40], ['👦', 40], ['👧', 40], ['🎒', 40],
+      ['🐄', 46], ['🐕', 34], ['🏍️', 42],
+      ['🥁', 38], ['🎺', 38], ['💃', 38], ['🕺', 38], ['🎉', 38], ['🐎', 38],
+      ['🚌', 50], ['🧍🧍', 20], ['💦', 38],
+    ];
+    for (const [emoji, size] of warm) emojiTexture(this, emoji, size);
+
     this.poiZones = buildPoiZones(this.spec, this.level);
     this.buildRowDistances();
+    this.buildChunks();
     this.drawWorld();
     this.drawChaiStops();
     this.computeBlockedPct();
@@ -149,13 +182,14 @@ export class GameScene extends Phaser.Scene {
       .setDepth(10);
 
     this.traffic = new TrafficSystem(
-      this,
+      this.sprites,
       this.worldHeight,
       (lane, y) => this.laneInfoAt(lane, y),
       (col) => this.colCenterX(col),
     );
     this.peds = new PedestrianSystem(
       this,
+      this.sprites,
       this.worldHeight,
       (y) => this.pedContextAt(y),
       (col) => this.colCenterX(col),
@@ -175,7 +209,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.busStops = new BusStopSystem(
-      this,
+      this.sprites,
       stops,
       (row) => this.rowCenterY(row),
       (col) => this.colCenterX(col),
@@ -189,10 +223,10 @@ export class GameScene extends Phaser.Scene {
       if (last && last.startRow + last.rows === row.index) last.rows++;
       else bands.push({ startRow: row.index, rows: 1, type: crossing.type });
     }
-    this.crossTraffic = new CrossTrafficSystem(this, bands, (row) => this.rowCenterY(row));
+    this.crossTraffic = new CrossTrafficSystem(this, this.sprites, bands, (row) => this.rowCenterY(row));
 
     this.procession = new ProcessionSystem(
-      this,
+      this.sprites,
       (y) => {
         const seg = this.segmentAtRow(this.yToRow(y));
         return seg ? columnLayout(seg.footpath.side).roadCols : null;
@@ -296,6 +330,40 @@ export class GameScene extends Phaser.Scene {
     this.ended = false;
   }
 
+  /** Rows per static-world chunk; each chunk culls as one unit. */
+  private static readonly CHUNK_ROWS = 32;
+
+  private buildChunks(): void {
+    this.worldChunks = [];
+    const count = Math.ceil(this.rows.length / GameScene.CHUNK_ROWS);
+    for (let c = 0; c < count; c++) {
+      const startRow = c * GameScene.CHUNK_ROWS;
+      const endRow = Math.min(this.rows.length, startRow + GameScene.CHUNK_ROWS) - 1;
+      this.worldChunks.push({
+        container: this.add.container(0, 0).setDepth(1),
+        topY: this.worldHeight - (endRow + 1) * TILE,
+        bottomY: this.worldHeight - startRow * TILE,
+      });
+    }
+  }
+
+  private chunkFor(row: number): Phaser.GameObjects.Container {
+    const idx = Math.min(
+      this.worldChunks.length - 1,
+      Math.max(0, Math.floor(row / GameScene.CHUNK_ROWS)),
+    );
+    return this.worldChunks[idx].container;
+  }
+
+  /** Phaser skips invisible containers entirely — the world costs O(viewport). */
+  private cullChunks(cameraTopY: number, cameraBottomY: number): void {
+    const margin = 220;
+    for (const chunk of this.worldChunks) {
+      chunk.container.visible =
+        chunk.bottomY >= cameraTopY - margin && chunk.topY <= cameraBottomY + margin;
+    }
+  }
+
   /** Junction bands and buffers occupy rows but no real distance. */
   private buildRowDistances(): void {
     this.rowDistanceM = new Array(this.rows.length).fill(0);
@@ -364,8 +432,16 @@ export class GameScene extends Phaser.Scene {
   // ── world rendering ────────────────────────────────────────────
 
   private drawWorld(): void {
-    const g = this.add.graphics().setDepth(0);
+    let g!: Phaser.GameObjects.Graphics;
+    let chunkIndex = -1;
     for (const row of this.rows) {
+      // New chunk boundary: start a fresh Graphics inside that chunk's container.
+      const rowChunk = Math.floor(row.index / GameScene.CHUNK_ROWS);
+      if (rowChunk !== chunkIndex) {
+        chunkIndex = rowChunk;
+        g = this.add.graphics();
+        this.worldChunks[Math.min(chunkIndex, this.worldChunks.length - 1)].container.add(g);
+      }
       const top = this.worldHeight - (row.index + 1) * TILE;
       for (let c = 0; c < COLS; c++) {
         const cell = row.cells[c];
@@ -416,25 +492,27 @@ export class GameScene extends Phaser.Scene {
     this.drawPois();
 
     // Start and finish bands.
-    this.add
-      .text(GAME_WIDTH / 2, this.rowCenterY(1) + TILE, `START — ${this.spec.minimap.origin_name}`, {
-        fontSize: '16px',
-        color: '#ffffff',
-        backgroundColor: '#2a7a2a',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5)
-      .setDepth(2);
+    this.chunkFor(1).add(
+      this.add
+        .text(GAME_WIDTH / 2, this.rowCenterY(1) + TILE, `START — ${this.spec.minimap.origin_name}`, {
+          fontSize: '16px',
+          color: '#ffffff',
+          backgroundColor: '#2a7a2a',
+          padding: { x: 8, y: 4 },
+        })
+        .setOrigin(0.5),
+    );
     const finishRow = this.rows[this.rows.length - 1];
-    this.add
-      .text(GAME_WIDTH / 2, this.rowCenterY(finishRow.index), `🏁 ${this.spec.minimap.dest_name}`, {
-        fontSize: '22px',
-        color: '#ffffff',
-        backgroundColor: '#2a7a2a',
-        padding: { x: 10, y: 6 },
-      })
-      .setOrigin(0.5)
-      .setDepth(2);
+    this.chunkFor(finishRow.index).add(
+      this.add
+        .text(GAME_WIDTH / 2, this.rowCenterY(finishRow.index), `🏁 ${this.spec.minimap.dest_name}`, {
+          fontSize: '22px',
+          color: '#ffffff',
+          backgroundColor: '#2a7a2a',
+          padding: { x: 10, y: 6 },
+        })
+        .setOrigin(0.5),
+    );
   }
 
   private drawHazardEmoji(): void {
@@ -458,10 +536,9 @@ export class GameScene extends Phaser.Scene {
         // Skip the synthetic barrier marking a missing footpath — the dark
         // fill alone reads as "no footpath here".
         if (cell.hazard === 'barrier' && !this.segmentHasBarrier(row)) continue;
-        this.add
-          .text(this.colCenterX(c), this.rowCenterY(row.index), emoji, { fontSize: '40px' })
-          .setOrigin(0.5)
-          .setDepth(2);
+        this.chunkFor(row.index).add(
+          this.add.image(this.colCenterX(c), this.rowCenterY(row.index), emojiTexture(this, emoji, 40)),
+        );
       }
     }
   }
@@ -496,16 +573,17 @@ export class GameScene extends Phaser.Scene {
         const name = poi.name.length > 20 ? `${poi.name.slice(0, 19)}…` : poi.name;
         const label = `${poiEmoji(poi.category)} ${name}`;
         const onLeft = poi.side === 'left';
-        this.add
-          .text(onLeft ? CORRIDOR_X + 4 : GAME_WIDTH - CORRIDOR_X - 4, this.rowCenterY(row), label, {
-            fontSize: '12px',
-            color: '#e8e3d0',
-            backgroundColor: '#22223add',
-            padding: { x: 5, y: 2 },
-          })
-          .setOrigin(onLeft ? 0 : 1, 0.5)
-          .setAlpha(0.92)
-          .setDepth(1.5);
+        this.chunkFor(row).add(
+          this.add
+            .text(onLeft ? CORRIDOR_X + 4 : GAME_WIDTH - CORRIDOR_X - 4, this.rowCenterY(row), label, {
+              fontSize: '12px',
+              color: '#e8e3d0',
+              backgroundColor: '#22223add',
+              padding: { x: 5, y: 2 },
+            })
+            .setOrigin(onLeft ? 0 : 1, 0.5)
+            .setAlpha(0.92),
+        );
       }
     });
   }
@@ -514,8 +592,9 @@ export class GameScene extends Phaser.Scene {
     for (const stop of this.poiZones.chaiStops) {
       const x = this.colCenterX(stop.col);
       const y = this.rowCenterY(stop.row);
-      this.add.circle(x, y, TILE * 0.42, 0xf4d35e, 0.22).setDepth(1.8);
-      this.add.text(x, y, '☕', { fontSize: '30px' }).setOrigin(0.5).setDepth(1.9);
+      const chunk = this.chunkFor(stop.row);
+      chunk.add(this.add.circle(x, y, TILE * 0.42, 0xf4d35e, 0.22));
+      chunk.add(this.add.image(x, y, emojiTexture(this, '☕', 30)));
     }
   }
 
@@ -524,15 +603,16 @@ export class GameScene extends Phaser.Scene {
       if (!row.transition) continue;
       const arrow = row.transition.bendDeg < 0 ? '⬅️' : row.transition.bendDeg > 0 ? '➡️' : '⬆️';
       const label = row.transition.nextName ? `${arrow}  ${row.transition.nextName}` : arrow;
-      this.add
-        .text(GAME_WIDTH / 2, this.rowCenterY(row.index), label, {
-          fontSize: '18px',
-          color: '#1a1a2e',
-          backgroundColor: '#e8e3d0',
-          padding: { x: 10, y: 4 },
-        })
-        .setOrigin(0.5)
-        .setDepth(2);
+      this.chunkFor(row.index).add(
+        this.add
+          .text(GAME_WIDTH / 2, this.rowCenterY(row.index), label, {
+            fontSize: '18px',
+            color: '#1a1a2e',
+            backgroundColor: '#e8e3d0',
+            padding: { x: 10, y: 4 },
+          })
+          .setOrigin(0.5),
+      );
     }
   }
 
@@ -634,16 +714,16 @@ export class GameScene extends Phaser.Scene {
       this.stunnedUntil = this.time.now + 1500; // sipping takes time
       this.health = Math.min(MAX_HEALTH, this.health + 10);
       sfx.slurp();
-      const pop = this.add
-        .text(this.player.x, this.player.y - TILE * 0.8, `☕ +10 ❤ Cutting chai at ${chai.name}!`, {
-          fontSize: '15px',
-          color: '#1a1a2e',
-          backgroundColor: '#f4d35e',
-          padding: { x: 8, y: 4 },
-        })
-        .setOrigin(0.5)
+      const pop = this.badgeLabels
+        .obtain(`☕ +10 ❤ Cutting chai at ${chai.name}!`, this.player.x, this.player.y - TILE * 0.8)
         .setDepth(16);
-      this.tweens.add({ targets: pop, alpha: 0, y: pop.y - 26, duration: 1600, onComplete: () => pop.destroy() });
+      this.tweens.add({
+        targets: pop,
+        alpha: 0,
+        y: pop.y - 26,
+        duration: 1600,
+        onComplete: () => this.badgeLabels.release(pop),
+      });
       this.emitHud();
     }
 
@@ -677,6 +757,7 @@ export class GameScene extends Phaser.Scene {
     if (this.ended) return;
     this.elapsedMs += deltaMs;
     const cam = this.cameras.main;
+    this.cullChunks(cam.scrollY, cam.scrollY + cam.height);
     this.traffic.update(deltaMs, cam.scrollY, cam.scrollY + cam.height);
     this.peds.update(deltaMs, cam.scrollY, cam.scrollY + cam.height);
     this.busStops.update(deltaMs, cam.scrollY, cam.scrollY + cam.height);
@@ -788,16 +869,16 @@ export class GameScene extends Phaser.Scene {
         if (gap > 0 && gap < TILE * HONK_DISTANCE_TILES) {
           v.honked = true;
           sfx.honk(v.wrongSide);
-          const honk = this.add
-            .text(v.obj.x, v.obj.y - TILE * 0.6, v.wrongSide ? '📢 WRONG SIDE!' : '📢 HONK!', {
-              fontSize: '16px',
-              color: '#1a1a2e',
-              backgroundColor: '#f4d35e',
-              padding: { x: 6, y: 2 },
-            })
-            .setOrigin(0.5)
+          const honk = this.badgeLabels
+            .obtain(v.wrongSide ? '📢 WRONG SIDE!' : '📢 HONK!', v.obj.x, v.obj.y - TILE * 0.6)
             .setDepth(16);
-          this.tweens.add({ targets: honk, alpha: 0, y: honk.y - 18, duration: 700, onComplete: () => honk.destroy() });
+          this.tweens.add({
+            targets: honk,
+            alpha: 0,
+            y: honk.y - 18,
+            duration: 700,
+            onComplete: () => this.badgeLabels.release(honk),
+          });
         }
       }
       // Near miss: it blasts past one column over while you're on the road.
@@ -812,15 +893,16 @@ export class GameScene extends Phaser.Scene {
           this.score += bonus;
           sfx.nearMiss();
           const label = this.nearMissStreak > 1 ? `😅 +${bonus} ×${this.nearMissStreak}` : `😅 +${bonus}`;
-          const pop = this.add
-            .text(this.player.x, this.player.y - TILE * 0.7, label, {
-              fontSize: '18px',
-              color: '#8fd18f',
-              fontStyle: 'bold',
-            })
-            .setOrigin(0.5)
+          const pop = this.floatLabels
+            .obtain(label, this.player.x, this.player.y - TILE * 0.7)
             .setDepth(16);
-          this.tweens.add({ targets: pop, alpha: 0, y: pop.y - 24, duration: 600, onComplete: () => pop.destroy() });
+          this.tweens.add({
+            targets: pop,
+            alpha: 0,
+            y: pop.y - 24,
+            duration: 600,
+            onComplete: () => this.floatLabels.release(pop),
+          });
         }
       }
     }
@@ -846,16 +928,13 @@ export class GameScene extends Phaser.Scene {
       const cell = this.rows[row]?.cells[v.col];
       if (!cell?.puddle?.splash) continue;
       v.splashCooldownMs = 1200;
-      const splash = this.add
-        .text(this.colCenterX(v.col), v.obj.y, '💦', { fontSize: '38px' })
-        .setOrigin(0.5)
-        .setDepth(15);
+      const splash = this.sprites.obtain('💦', 38, this.colCenterX(v.col), v.obj.y).setDepth(15);
       this.tweens.add({
         targets: splash,
         alpha: 0,
         scale: 1.8,
         duration: 500,
-        onComplete: () => splash.destroy(),
+        onComplete: () => this.sprites.release(splash),
       });
       if (Math.abs(this.playerCol - v.col) <= 1 && Math.abs(this.playerRow - row) <= 1) {
         sfx.splash();

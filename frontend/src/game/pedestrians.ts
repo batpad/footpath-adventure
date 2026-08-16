@@ -6,11 +6,12 @@
 import Phaser from 'phaser';
 import { TILE } from './constants';
 import type { Cell } from '../level/corridor';
+import type { SpritePool } from './pools';
 
 export type PedKind = 'walker' | 'cow' | 'dog' | 'bike';
 
 export interface Pedestrian {
-  obj: Phaser.GameObjects.Text;
+  obj: Phaser.GameObjects.Image;
   col: number;
   /** Pixels per second toward the player (downscreen). */
   speed: number;
@@ -25,7 +26,7 @@ interface KindConfig {
   weight: number;
   emoji: (rand: () => number) => string;
   speed: () => number;
-  fontSize: string;
+  fontPx: number;
 }
 
 const KINDS: Record<PedKind, KindConfig> = {
@@ -33,25 +34,25 @@ const KINDS: Record<PedKind, KindConfig> = {
     weight: 0.8,
     emoji: (rand) => WALKER_EMOJI[Math.floor(rand() * WALKER_EMOJI.length)],
     speed: () => 40 + Math.random() * 35,
-    fontSize: '40px',
+    fontPx: 40,
   },
   cow: {
     weight: 0.06,
     emoji: () => '🐄',
     speed: () => (Math.random() < 0.6 ? 0 : 10),
-    fontSize: '46px',
+    fontPx: 46,
   },
   dog: {
     weight: 0.08,
     emoji: () => '🐕',
     speed: () => 60 + Math.random() * 50,
-    fontSize: '34px',
+    fontPx: 34,
   },
   bike: {
     weight: 0.06,
     emoji: () => '🏍️',
     speed: () => 130 + Math.random() * 40,
-    fontSize: '42px',
+    fontPx: 42,
   },
 };
 
@@ -90,6 +91,7 @@ export class PedestrianSystem {
 
   constructor(
     private scene: Phaser.Scene,
+    private pool: SpritePool,
     private worldHeight: number,
     private contextAt: (y: number) => PedSpawnContext,
     private colCenterX: (col: number) => number,
@@ -107,7 +109,7 @@ export class PedestrianSystem {
       const p = this.peds[i];
       p.obj.y += p.speed * dt;
       if (p.obj.y > cameraBottomY + SPAWN_MARGIN * 2 || p.obj.y > this.worldHeight + TILE) {
-        p.obj.destroy();
+        this.pool.release(p.obj);
         this.peds.splice(i, 1);
         continue;
       }
@@ -150,7 +152,7 @@ export class PedestrianSystem {
       targets: p.obj,
       alpha: 0,
       duration: 250,
-      onComplete: () => p.obj.destroy(),
+      onComplete: () => this.pool.release(p.obj),
     });
   }
 
@@ -187,10 +189,7 @@ export class PedestrianSystem {
       emoji = KID_EMOJI[Math.floor(Math.random() * KID_EMOJI.length)];
       speed *= 1.2; // kids dart
     }
-    const obj = this.scene.add
-      .text(this.colCenterX(col), y, emoji, { fontSize: cfg.fontSize })
-      .setOrigin(0.5)
-      .setDepth(6);
+    const obj = this.pool.obtain(emoji, cfg.fontPx, this.colCenterX(col), y).setDepth(6);
     this.peds.push({ obj, col, speed, kind, sidestepCooldownMs: 0 });
   }
 
@@ -208,7 +207,7 @@ export class PedestrianSystem {
   }
 
   destroy(): void {
-    for (const p of this.peds) p.obj.destroy();
+    for (const p of this.peds) this.pool.release(p.obj);
     this.peds.length = 0;
   }
 }

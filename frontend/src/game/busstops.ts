@@ -4,6 +4,7 @@
  */
 import Phaser from 'phaser';
 import { TILE } from './constants';
+import type { SpritePool } from './pools';
 
 export interface BusStopLocation {
   row: number;
@@ -12,8 +13,8 @@ export interface BusStopLocation {
 }
 
 interface Bus {
-  obj: Phaser.GameObjects.Text;
-  boarders: Phaser.GameObjects.Text | null;
+  obj: Phaser.GameObjects.Image;
+  boarders: Phaser.GameObjects.Image | null;
   col: number;
   state: 'arriving' | 'stopped' | 'leaving';
   stopY: number;
@@ -31,7 +32,7 @@ export class BusStopSystem {
   private spawnTimer = SPAWN_EVERY_MS * 0.6; // first bus comes fairly soon
 
   constructor(
-    private scene: Phaser.Scene,
+    private pool: SpritePool,
     private stops: BusStopLocation[],
     private rowCenterY: (row: number) => number,
     private colCenterX: (col: number) => number,
@@ -53,24 +54,23 @@ export class BusStopSystem {
           bus.obj.y = bus.stopY;
           bus.state = 'stopped';
           bus.waitMs = WAIT_MS;
-          bus.boarders = this.scene.add
-            .text(bus.obj.x - TILE * 0.75, bus.obj.y + TILE * 0.4, '🧍🧍', { fontSize: '20px' })
-            .setOrigin(0.5)
+          bus.boarders = this.pool
+            .obtain('🧍🧍', 20, bus.obj.x - TILE * 0.75, bus.obj.y + TILE * 0.4)
             .setDepth(5);
         }
       } else if (bus.state === 'stopped') {
         bus.waitMs -= deltaMs;
         if (bus.waitMs <= 0) {
           bus.state = 'leaving';
-          bus.boarders?.destroy();
+          if (bus.boarders) this.pool.release(bus.boarders);
           bus.boarders = null;
         }
       } else {
         bus.obj.y -= LEAVE_SPEED * dt;
       }
       if (bus.obj.y < cameraTopY - SPAWN_MARGIN * 2) {
-        bus.obj.destroy();
-        bus.boarders?.destroy();
+        this.pool.release(bus.obj);
+        if (bus.boarders) this.pool.release(bus.boarders);
         this.buses.splice(i, 1);
       }
     }
@@ -85,9 +85,8 @@ export class BusStopSystem {
     });
     if (!candidates.length) return;
     const stop = candidates[Math.floor(Math.random() * candidates.length)];
-    const obj = this.scene.add
-      .text(this.colCenterX(stop.roadCol), cameraBottomY + SPAWN_MARGIN, '🚌', { fontSize: '50px' })
-      .setOrigin(0.5)
+    const obj = this.pool
+      .obtain('🚌', 50, this.colCenterX(stop.roadCol), cameraBottomY + SPAWN_MARGIN)
       .setAngle(90)
       .setDepth(5);
     this.buses.push({
@@ -102,8 +101,8 @@ export class BusStopSystem {
 
   destroy(): void {
     for (const bus of this.buses) {
-      bus.obj.destroy();
-      bus.boarders?.destroy();
+      this.pool.release(bus.obj);
+      if (bus.boarders) this.pool.release(bus.boarders);
     }
     this.buses.length = 0;
   }

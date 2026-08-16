@@ -5,6 +5,7 @@
  */
 import Phaser from 'phaser';
 import { TILE } from './constants';
+import type { SpritePool } from './pools';
 
 const MEMBER_EMOJI = ['🥁', '🎺', '💃', '🕺', '🎉', '🐎', '🕺', '💃'];
 const SPEED = 38;
@@ -15,7 +16,7 @@ const ROWS = 6;
 const SPAWN_MARGIN = 200;
 
 export interface ProcessionMember {
-  obj: Phaser.GameObjects.Text;
+  obj: Phaser.GameObjects.Image;
   col: number;
 }
 
@@ -27,7 +28,7 @@ export class ProcessionSystem {
   onSpawn: (() => void) | null = null;
 
   constructor(
-    private scene: Phaser.Scene,
+    private pool: SpritePool,
     private roadColsAt: (y: number) => [number, number, number] | null,
     private colCenterX: (col: number) => number,
   ) {}
@@ -50,7 +51,7 @@ export class ProcessionSystem {
       const m = this.members[i];
       m.obj.y += dy;
       if (m.obj.y > cameraBottomY + SPAWN_MARGIN) {
-        m.obj.destroy();
+        this.pool.release(m.obj);
         this.members.splice(i, 1);
       }
     }
@@ -65,14 +66,13 @@ export class ProcessionSystem {
       for (const col of roadCols) {
         if (Math.random() < 0.25) continue; // gaps so it breathes
         const jitterX = (Math.random() - 0.5) * TILE * 0.4;
-        const obj = this.scene.add
-          .text(
+        const obj = this.pool
+          .obtain(
+            MEMBER_EMOJI[Math.floor(Math.random() * MEMBER_EMOJI.length)],
+            38,
             this.colCenterX(col) + jitterX,
             yTop - r * TILE * 0.9,
-            MEMBER_EMOJI[Math.floor(Math.random() * MEMBER_EMOJI.length)],
-            { fontSize: '38px' },
           )
-          .setOrigin(0.5)
           .setDepth(6);
         this.members.push({ obj, col });
       }
@@ -81,7 +81,7 @@ export class ProcessionSystem {
   }
 
   destroy(): void {
-    for (const m of this.members) m.obj.destroy();
+    for (const m of this.members) this.pool.release(m.obj);
     this.members.length = 0;
   }
 }

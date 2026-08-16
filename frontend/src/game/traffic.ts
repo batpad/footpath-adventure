@@ -8,9 +8,10 @@
 import Phaser from 'phaser';
 import { TILE, VEHICLE_EMOJI } from './constants';
 import type { VehicleMix } from '../level/types';
+import type { SpritePool } from './pools';
 
 export interface Vehicle {
-  obj: Phaser.GameObjects.Text;
+  obj: Phaser.GameObjects.Image;
   col: number;
   /** -1 = moving up (with the player), +1 = oncoming. */
   dirY: -1 | 1;
@@ -53,7 +54,7 @@ export class TrafficSystem {
   private timers: number[] = LANES.map(() => 0);
 
   constructor(
-    private scene: Phaser.Scene,
+    private pool: SpritePool,
     private worldHeight: number,
     private laneInfoAt: (lane: 0 | 1 | 2, y: number) => LaneInfo,
     private colCenterX: (col: number) => number,
@@ -76,7 +77,7 @@ export class TrafficSystem {
       const off =
         v.obj.y < cameraTopY - SPAWN_MARGIN * 2 || v.obj.y > cameraBottomY + SPAWN_MARGIN * 2;
       if (off || v.obj.y < -TILE || v.obj.y > this.worldHeight + TILE) {
-        v.obj.destroy();
+        this.pool.release(v.obj);
         this.vehicles.splice(i, 1);
       }
     }
@@ -99,9 +100,8 @@ export class TrafficSystem {
     }
 
     const kind = wrongSide ? (Math.random() < 0.6 ? 'rickshaw' : 'bike') : pickKind(info.mix);
-    const obj = this.scene.add
-      .text(this.colCenterX(info.col), y, VEHICLE_EMOJI[kind], { fontSize: '44px' })
-      .setOrigin(0.5)
+    const obj = this.pool
+      .obtain(VEHICLE_EMOJI[kind], 44, this.colCenterX(info.col), y)
       .setAngle(dirY === -1 ? 90 : -90)
       .setDepth(5);
     this.vehicles.push({
@@ -118,7 +118,7 @@ export class TrafficSystem {
   }
 
   destroy(): void {
-    for (const v of this.vehicles) v.obj.destroy();
+    for (const v of this.vehicles) this.pool.release(v.obj);
     this.vehicles.length = 0;
   }
 }

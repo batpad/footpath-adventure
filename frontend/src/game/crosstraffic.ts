@@ -5,6 +5,7 @@
  */
 import Phaser from 'phaser';
 import { GAME_WIDTH, TILE, VEHICLE_EMOJI } from './constants';
+import type { SpritePool } from './pools';
 
 export type CrossingType = 'signals' | 'zebra' | 'unmarked';
 
@@ -15,7 +16,7 @@ export interface CrossingBand {
 }
 
 export interface CrossVehicle {
-  obj: Phaser.GameObjects.Text;
+  obj: Phaser.GameObjects.Image;
   row: number;
   dirX: 1 | -1;
   speed: number;
@@ -46,7 +47,8 @@ export class CrossTrafficSystem {
   private elapsedMs = 0;
 
   constructor(
-    private scene: Phaser.Scene,
+    scene: Phaser.Scene,
+    private pool: SpritePool,
     private bands: CrossingBand[],
     private rowCenterY: (row: number) => number,
   ) {
@@ -77,7 +79,8 @@ export class CrossTrafficSystem {
     this.bands.forEach((band, i) => {
       const y = this.rowCenterY(band.startRow + 1);
       if (y < cameraTopY - VIEW_MARGIN || y > cameraBottomY + VIEW_MARGIN) return;
-      this.indicators[i]?.setText(walk ? '🚶' : '✋');
+      const ind = this.indicators[i];
+      if (ind && ind.text !== (walk ? '🚶' : '✋')) ind.setText(walk ? '🚶' : '✋');
       if (band.type === 'signals' && walk) return; // traffic held
       this.timers[i] += deltaMs;
       if (this.timers[i] >= SPAWN_EVERY_MS[band.type]) {
@@ -91,7 +94,7 @@ export class CrossTrafficSystem {
       const v = this.vehicles[i];
       v.obj.x += v.dirX * v.speed * dt;
       if (v.obj.x < -TILE || v.obj.x > GAME_WIDTH + TILE) {
-        v.obj.destroy();
+        this.pool.release(v.obj);
         this.vehicles.splice(i, 1);
       }
     }
@@ -108,10 +111,7 @@ export class CrossTrafficSystem {
       if (v.row === row && Math.abs(v.obj.x - entryX) < TILE * 2) return;
     }
     const kind = pickKind();
-    const obj = this.scene.add
-      .text(entryX, this.rowCenterY(row), VEHICLE_EMOJI[kind], { fontSize: '40px' })
-      .setOrigin(0.5)
-      .setDepth(5);
+    const obj = this.pool.obtain(VEHICLE_EMOJI[kind], 40, entryX, this.rowCenterY(row)).setDepth(5);
     obj.setFlipX(dirX === 1); // vehicle emoji face left by default
     this.vehicles.push({
       obj,
@@ -123,7 +123,7 @@ export class CrossTrafficSystem {
   }
 
   destroy(): void {
-    for (const v of this.vehicles) v.obj.destroy();
+    for (const v of this.vehicles) this.pool.release(v.obj);
     this.vehicles.length = 0;
     for (const ind of this.indicators) ind?.destroy();
   }

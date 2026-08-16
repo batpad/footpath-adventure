@@ -183,19 +183,31 @@ export class HUDScene extends Phaser.Scene {
     this.mapDot.setPosition(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
   }
 
+  /** setText re-rasterizes a canvas — only touch Texts whose value changed. */
+  private setIfChanged(text: Phaser.GameObjects.Text, value: string): void {
+    if (text.text !== value) text.setText(value);
+  }
+
   private onUpdate(s: HudState): void {
     const frac = Phaser.Math.Clamp(s.health / MAX_HEALTH, 0, 1);
     this.healthBar.width = 120 * frac;
     this.healthBar.fillColor = frac > 0.5 ? 0x4caf50 : frac > 0.25 ? 0xe0a030 : 0xd0392b;
-    this.scoreText.setText(String(s.score));
-    this.distanceText.setText(`${s.distanceM} / ${s.totalM} m ${s.mode === 'monsoon' ? '🌧️' : ''}`);
+    this.setIfChanged(this.scoreText, String(s.score));
+    this.setIfChanged(
+      this.distanceText,
+      `${s.distanceM} / ${s.totalM} m ${s.mode === 'monsoon' ? '🌧️' : ''}`,
+    );
     const m = Math.floor(s.timeLeftS / 60);
     const sec = String(s.timeLeftS % 60).padStart(2, '0');
-    this.timerText.setText(`⏰ ${m}:${sec}`);
-    this.timerText.setColor(s.timeLeftS <= 15 ? '#ff5544' : s.timeLeftS <= 30 ? '#f4a63e' : '#ffffff');
-    this.streetText.setText(s.streetName);
-    this.laneBadge.setText(s.onFootpath ? 'on footpath ×1.5' : 'on road');
-    this.laneBadge.setColor(s.onFootpath ? '#8fd18f' : '#e0a030');
+    this.setIfChanged(this.timerText, `⏰ ${m}:${sec}`);
+    const timerColor = s.timeLeftS <= 15 ? '#ff5544' : s.timeLeftS <= 30 ? '#f4a63e' : '#ffffff';
+    if (this.timerText.style.color !== timerColor) this.timerText.setColor(timerColor);
+    this.setIfChanged(this.streetText, s.streetName);
+    const lane = s.onFootpath ? 'on footpath ×1.5' : 'on road';
+    if (this.laneBadge.text !== lane) {
+      this.laneBadge.setText(lane);
+      this.laneBadge.setColor(s.onFootpath ? '#8fd18f' : '#e0a030');
+    }
     this.updateMapDot(s.totalM > 0 ? s.distanceM / s.totalM : 0);
   }
 
