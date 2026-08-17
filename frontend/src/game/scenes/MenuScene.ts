@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, RES } from '../constants';
 import type { Mode } from '../../level/types';
 import { sampleLevel } from '../../level/sample-level';
 import { sfx } from '../sound';
@@ -14,6 +14,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.cameras.main.setZoom(RES).centerOn(GAME_WIDTH / 2, GAME_HEIGHT / 2);
     const cx = GAME_WIDTH / 2;
     this.add
       .text(cx, GAME_HEIGHT * 0.16, 'FOOTPATH\nADVENTURE', {

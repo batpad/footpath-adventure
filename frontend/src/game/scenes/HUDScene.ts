@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH, MAX_HEALTH } from '../constants';
+import { GAME_HEIGHT, GAME_WIDTH, MAX_HEALTH, RES } from '../constants';
 import type { LevelSpec } from '../../level/types';
 import { sfx } from '../sound';
 
@@ -36,6 +36,7 @@ export class HUDScene extends Phaser.Scene {
   }
 
   create(data: { minimap?: MinimapSpec }): void {
+    this.cameras.main.setZoom(RES).centerOn(GAME_WIDTH / 2, GAME_HEIGHT / 2);
     const pad = 12;
     this.add.rectangle(GAME_WIDTH / 2, 30, GAME_WIDTH, 60, 0x101020, 0.75).setDepth(0);
 

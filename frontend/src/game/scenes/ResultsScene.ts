@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, RES } from '../constants';
 import type { RunStats } from './GameScene';
 import { openReportForm } from '../../ui/reportForm';
 import { pickSpotOnRoute } from '../../ui/pickSpot';
@@ -19,6 +19,7 @@ export class ResultsScene extends Phaser.Scene {
   }
 
   create(stats: RunStats): void {
+    this.cameras.main.setZoom(RES).centerOn(GAME_WIDTH / 2, GAME_HEIGHT / 2);
     const cx = GAME_WIDTH / 2;
     // Opaque backdrop — the world behind must never bleed into the stats.
     this.add.rectangle(cx, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x1a1a2e, 1);

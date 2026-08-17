@@ -5,6 +5,7 @@
  */
 import Phaser from 'phaser';
 import { emojiTexture } from './emojiAtlas';
+import { RES, withRes } from './constants';
 
 export class SpritePool {
   private free: Phaser.GameObjects.Image[] = [];
@@ -26,7 +27,7 @@ export class SpritePool {
       .setAlpha(1)
       .setAngle(0)
       .setFlip(false, false)
-      .setScale(1)
+      .setScale(1 / RES)
       .setDepth(0);
     return img;
   }
@@ -56,7 +57,7 @@ export class LabelPool {
       label.setText(text);
       label.setActive(true).setVisible(true);
     } else {
-      label = this.scene.add.text(0, 0, text, this.style);
+      label = this.scene.add.text(0, 0, text, withRes(this.style));
     }
     label.setPosition(x, y).setOrigin(0.5).setAlpha(1);
     return label;

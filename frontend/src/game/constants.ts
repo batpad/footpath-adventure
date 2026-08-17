@@ -1,6 +1,17 @@
 export const GAME_WIDTH = 480;
 export const GAME_HEIGHT = 800;
 
+/**
+ * HiDPI factor: the framebuffer is GAME_* × RES and every scene camera zooms
+ * by RES, so world coordinates stay logical while pixels match the display.
+ */
+export const RES = Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+
+/** Adds the HiDPI rasterization hint to a Text style. */
+export function withRes<T extends object>(style: T): T & { resolution: number } {
+  return { ...style, resolution: RES };
+}
+
 /** Pixels per tile; corridor is 6 tiles wide. */
 export const TILE = 72;
 export const CORRIDOR_X = (GAME_WIDTH - TILE * 6) / 2;

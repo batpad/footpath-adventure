@@ -7,13 +7,16 @@
  * survive scene restarts ("walk again").
  */
 import Phaser from 'phaser';
+import { RES } from './constants';
 
 export function emojiTexture(scene: Phaser.Scene, emoji: string, fontPx: number): string {
   const key = `emoji:${emoji}:${fontPx}`;
   if (scene.textures.exists(key)) return key;
 
+  // Rasterized at device resolution; displayed at 1/RES scale under the
+  // RES-zoomed camera -> 1:1 with physical pixels.
   const text = scene.make.text(
-    { text: emoji, style: { fontSize: `${fontPx}px` } },
+    { text: emoji, style: { fontSize: `${fontPx * RES}px` } },
     false, // never added to the display list
   );
   const w = Math.max(2, Math.ceil(text.width));

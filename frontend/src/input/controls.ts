@@ -3,10 +3,12 @@
  * events, so the game logic never knows which device it is running on.
  */
 import Phaser from 'phaser';
+import { RES } from '../game/constants';
 
 export type StepIntent = 'up' | 'down' | 'left' | 'right';
 
-const SWIPE_THRESHOLD_PX = 24;
+// Pointer coords are in canvas pixels, which are RES x logical size.
+const SWIPE_THRESHOLD_PX = 24 * RES;
 
 export class Controls {
   private listeners: ((intent: StepIntent) => void)[] = [];

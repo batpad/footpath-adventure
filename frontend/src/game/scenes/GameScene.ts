@@ -38,6 +38,7 @@ import {
   PRESSURE_ROWS_PER_S,
   PRESSURE_RUBBER_BAND_ROWS,
   PRESSURE_START_GAP,
+  RES,
   SCORE_PER_ROW,
   STALL_WARES_EMOJI,
   STEP_TWEEN_MS,
@@ -251,6 +252,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(21);
 
     const cam = this.cameras.main;
+    cam.setZoom(RES); // HiDPI: framebuffer is RES x logical size
     cam.setBounds(0, 0, GAME_WIDTH, this.worldHeight);
     cam.startFollow(this.player, false, 0.12, 0.12);
     cam.setFollowOffset(0, CAMERA_FOLLOW_OFFSET_Y);
@@ -537,7 +539,9 @@ export class GameScene extends Phaser.Scene {
         // fill alone reads as "no footpath here".
         if (cell.hazard === 'barrier' && !this.segmentHasBarrier(row)) continue;
         this.chunkFor(row.index).add(
-          this.add.image(this.colCenterX(c), this.rowCenterY(row.index), emojiTexture(this, emoji, 40)),
+          this.add
+            .image(this.colCenterX(c), this.rowCenterY(row.index), emojiTexture(this, emoji, 40))
+            .setScale(1 / RES),
         );
       }
     }
@@ -594,7 +598,7 @@ export class GameScene extends Phaser.Scene {
       const y = this.rowCenterY(stop.row);
       const chunk = this.chunkFor(stop.row);
       chunk.add(this.add.circle(x, y, TILE * 0.42, 0xf4d35e, 0.22));
-      chunk.add(this.add.image(x, y, emojiTexture(this, '☕', 30)));
+      chunk.add(this.add.image(x, y, emojiTexture(this, '☕', 30)).setScale(1 / RES));
     }
   }
 
